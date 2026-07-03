@@ -5,48 +5,64 @@
     "url": "https://github.com/rafalolszewski94/vue3-smooth-scrollbar.git"
   },
   "license": "MIT",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "private": false,
-  "scripts": {
-    "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build --target lib --name vue3-smooth-scrollbar src/SmoothScrollbar.vue",
-    "lint": "vue-cli-service lint",
-    "release": "release-it"
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
   },
-  "main": "./dist/vue3-smooth-scrollbar.umd.js",
-  "browser": {
-    "./sfc": "src/SmoothScrollbar.vue"
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "vue-tsc --noEmit",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "bun run build && changeset publish"
+  },
+  "main": "./dist/vue3-smooth-scrollbar.umd.cjs",
+  "module": "./dist/vue3-smooth-scrollbar.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/vue3-smooth-scrollbar.js",
+      "require": "./dist/vue3-smooth-scrollbar.umd.cjs"
+    },
+    "./styles.css": "./dist/styles.css",
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist/*",
-    "src/*",
-    "public/*",
-    "*.json",
-    "*.js"
+    "dist"
   ],
-  "dependencies": {
-    "core-js": "^3.8.3",
-    "lodash": "^4.17.21",
-    "smooth-scrollbar": "^8.6.2",
-    "vue": "^3.0.4"
-  },
+  "sideEffects": [
+    "**/*.css"
+  ],
   "peerDependencies": {
-    "smooth-scrollbar": "^8.6.2"
+    "smooth-scrollbar": "^8.8.4",
+    "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.12.16",
-    "@babel/eslint-parser": "^7.12.16",
-    "@vue/cli-plugin-babel": "~5.0.0-beta.0",
-    "@vue/cli-plugin-eslint": "~5.0.0-beta.0",
-    "@vue/cli-service": "~5.0.0-beta.0",
-    "@vue/compiler-sfc": "^3.0.4",
-    "@vue/eslint-config-prettier": "^6.0.0",
-    "eslint": "^7.20.0",
-    "eslint-config-prettier": "^8.3.0",
-    "eslint-plugin-prettier": "^3.4.0",
-    "eslint-plugin-vue": "^7.2.0",
-    "prettier": "^2.2.1",
-    "release-it": "^14.6.2",
-    "vue-loader": "^15.9.7"
+    "@changesets/changelog-github": "^0.7.0",
+    "@changesets/cli": "^2.31.0",
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^24.10.1",
+    "@vitejs/plugin-vue": "^6.0.4",
+    "@vue/eslint-config-prettier": "^10.2.0",
+    "@vue/eslint-config-typescript": "^14.6.0",
+    "ajv": "^8.20.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-vue": "^10.6.2",
+    "globals": "^17.7.0",
+    "prettier": "^3.7.4",
+    "smooth-scrollbar": "^8.8.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.50.0",
+    "vite": "^7.3.0",
+    "vite-plugin-dts": "^4.5.4",
+    "vue": "^3.5.39",
+    "vue-tsc": "^3.2.1"
   }
 }

@@ -1,0 +1,38 @@
+/**
+ * Optional styles for vue3-smooth-scrollbar.
+ *
+ * Import in your app entry:
+ *   import "vue3-smooth-scrollbar/styles.css"
+ *
+ * smooth-scrollbar injects track and thumb styles at runtime.
+ * Use SmoothScrollbar.detachStyle() only if you replace those rules yourself.
+ */
+
+/* Scroll container */
+.c-scroll-view,
+[data-scrollbar].c-scroll-view {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.c-scroll-view__content,
+.scroll-content .c-scroll-view__content {
+  position: relative;
+  display: block;
+  height: auto;
+}
+
+/* Recommended layout when SmoothScrollbar wraps the main page content */
+.smooth-scrollbar-body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.smooth-scrollbar-root {
+  height: 100vh;
+  width: 100%;
+  overflow: auto;
+}

@@ -1,10 +1,34 @@
-<script>
-import SmoothScrollbar from "smooth-scrollbar"
-import { h } from "vue"
+<script setup lang="ts">
+import SmoothScrollbarLib from "smooth-scrollbar"
+import { onBeforeUnmount, onMounted, onUpdated, ref, watch } from "vue"
+import {
+  checkLoadCapability,
+  debounce,
+  defaultsDeep,
+  getScrollState,
+} from "./helpers"
+import type {
+  InfiniteLoadingPayload,
+  SmoothScrollbarOptions,
+} from "./SmoothScrollbar.types"
+import type {
+  ScrollStatus,
+  Scrollbar,
+  ScrollbarPluginConstructor,
+} from "./smooth-scrollbar.types"
+import type {
+  ScrollIntoViewOptions,
+  ScrollToOptions,
+} from "./smooth-scrollbar.types"
 
-import _ from "./helpers"
+const Event = {
+  loading: "loading",
+  endY: "endy",
+  endX: "endX",
+  scroll: "scroll",
+} as const
 
-const defaultOptions = {
+const defaultOptions: Required<SmoothScrollbarOptions> = {
   damping: 0.1,
   thumbMinSize: 20,
   renderByPixels: true,
@@ -14,325 +38,245 @@ const defaultOptions = {
   plugins: {},
 }
 
-const Event = {
-  loading: "loading",
-  endY: "endy",
-  endX: "endX",
-  scroll: "scroll",
+const props = withDefaults(
+  defineProps<{
+    infiniteLoading?: boolean
+    loadThreshold?: number
+    options?: SmoothScrollbarOptions
+    plugins?: ScrollbarPluginConstructor[]
+  }>(),
+  {
+    infiniteLoading: false,
+    loadThreshold: 50,
+    options: () => ({}),
+    plugins: () => [],
+  },
+)
+
+const emit = defineEmits<{
+  loading: [payload: InfiniteLoadingPayload]
+  endy: []
+  endX: []
+  scroll: [status: ScrollStatus]
+}>()
+
+const resolve = ref(true)
+const loading = ref(false)
+const completed = ref(false)
+const scrollBar = ref<Scrollbar | null>(null)
+const listeners = ref<Array<(status: ScrollStatus) => void>>([])
+const containerRef = ref<HTMLElement | null>(null)
+
+const getLimit = (axis: "x" | "y" | "" = "") =>
+  getScrollState(scrollBar.value, axis, "limit")
+
+const getOffset = (axis: "x" | "y" | "" = "") =>
+  getScrollState(scrollBar.value, axis, "offset")
+
+const scrollTo = (
+  x = 0,
+  y = 0,
+  duration = 300,
+  options: Partial<ScrollToOptions> = {},
+) => {
+  scrollBar.value?.scrollTo(x, y, duration, options)
 }
 
-export default {
-  name: "c-scroll-view",
-  props: {
-    infiniteLoading: {
-      type: Boolean,
-      default: false,
-    },
-    loadThreshold: {
-      type: Number,
-      default: 50,
-    },
-    options: {
-      type: Object,
-      default: () => ({}),
-    },
-    plugins: {
-      type: Array,
-      default: () => [],
-    },
-  },
-  data() {
-    return {
-      resolve: true,
-      loading: false,
-      completed: false,
-      scrollBar: null,
-      listeners: [],
-      meta: {
-        limit: {},
-        offset: {},
-      },
+const scrollIntoView = (
+  elem: HTMLElement,
+  options: Partial<ScrollIntoViewOptions> = {},
+) => {
+  scrollBar.value?.scrollIntoView(elem, options)
+}
+
+const isVisible = (elem: HTMLElement) =>
+  scrollBar.value?.isVisible(elem) ?? false
+
+const addListener = (listener: (status: ScrollStatus) => void) => {
+  listeners.value.push(listener)
+  scrollBar.value?.addListener(listener)
+}
+
+const removeListener = (listener: (status: ScrollStatus) => void) => {
+  listeners.value = listeners.value.filter((attached) => {
+    if (attached === listener) {
+      scrollBar.value?.removeListener(listener)
     }
-  },
-  computed: {
-    hasPlugins() {
-      if (_.isArray(this.plugins)) {
-        return !!this.plugins.length
-      } else {
-        return false
-      }
-    },
-  },
-  methods: {
-    /**
-     * @param {String} axis - x or y axis
-     * @return {Object}
-     */
-    getLimit(axis = "") {
-      return _.getScrollState(this.scrollBar, axis, "limit")
-    },
 
-    /**
-     * @param {String} axis - x or y axis
-     * @return {Object}
-     */
-    getOffset(axis = "") {
-      return _.getScrollState(this.scrollBar, axis, "offset")
-    },
+    return attached !== listener
+  })
+}
 
-    // Smooth-scrollbar api methods
-    /**
-     *
-     * @param {Number} x
-     * @param {Number} y
-     * @param {Number} duration
-     * @param {Object} options
-     * @see https://github.com/idiotWu/smooth-scrollbar/blob/develop/docs/api.md#scrollbarscrollto
-     */
-    scrollTo(x = 0, y = 0, duration = 300, options = {}) {
-      this.scrollBar.scrollTo(x, y, duration, options)
-    },
+const removeAllListeners = () => {
+  listeners.value.forEach((listener) => {
+    scrollBar.value?.removeListener(listener)
+  })
+  listeners.value = []
+}
 
-    /**
-     *
-     * @param {HTMLElement} elem
-     * @param {Object} [options]
-     * @see https://github.com/idiotWu/smooth-scrollbar/blob/develop/docs/api.md#scrollbarscrollintoview
-     */
-    scrollIntoView(elem, options = {}) {
-      this.scrollBar.scrollIntoView(elem, options)
-    },
+const update = () => {
+  scrollBar.value?.update()
+}
 
-    /**
-     *
-     * @param {HTMLElement} elem
-     * @see https://github.com/idiotWu/smooth-scrollbar/blob/develop/docs/api.md#scrollbarisvisible
-     */
-    isVisible(elem) {
-      this.scrollBar.isVisible(elem)
-    },
+const emitLoad = () => {
+  emit(Event.loading, {
+    loaded: () => setLoaded(),
+    completed: () => setCompleted(),
+  })
+}
 
-    /**
-     *
-     * @param {Function} listener
-     * @see https://github.com/idiotWu/smooth-scrollbar/blob/develop/docs/api.md#scrollbaraddlistener
-     */
-    addListener(listener) {
-      this.listeners.push(listener)
-      this.scrollBar.addListener(listener)
-    },
+const setLoaded = () => {
+  resolve.value = true
+  loading.value = false
+  completed.value = false
 
-    /**
-     *
-     * @param {Function} listener
-     * @see https://github.com/idiotWu/smooth-scrollbar/blob/develop/docs/api.md#scrollbarremovelistener
-     */
-    removeListener(listener) {
-      this.listeners = this.listeners.filter((attached) => {
-        if (attached === listener) {
-          this.scrollBar.removeListener(listener)
-        }
+  queueMicrotask(() => {
+    const limitY = getLimit("y")
+    const offsetY = getOffset("y")
 
-        return attached !== listener
-      })
-    },
+    if (
+      typeof limitY === "number" &&
+      typeof offsetY === "number" &&
+      checkLoadCapability(limitY, offsetY, props.loadThreshold)
+    ) {
+      emitLoad()
+    }
+  })
+}
 
-    /**
-     *
-     */
-    removeAllListeners() {
-      this.listeners.forEach((listener) => {
-        this.scrollBar.removeListener(listener)
-      })
-      this.listeners = []
-    },
+const setCompleted = () => {
+  resolve.value = false
+  loading.value = false
+  completed.value = true
+}
 
-    /**
-     * @see https://github.com/idiotWu/smooth-scrollbar/blob/develop/docs/api.md#scrollbarupdate
-     */
-    update() {
-      this.scrollBar.update()
-    },
+const resetInfLoad = () => {
+  resolve.value = true
+  loading.value = false
+  completed.value = false
+}
 
-    // Infinite loading api methods
+const debounceLoad = debounce(() => {
+  if (resolve.value) {
+    resolve.value = false
+    loading.value = true
+    emitLoad()
+  }
+}, 300)
 
-    /**
-     * Emits loading event
-     */
-    debounceLoad: _.debounce(function () {
-      if (this.resolve) {
-        this.resolve = false
-        this.loading = true
+const focus = () => {
+  scrollBar.value?.containerEl.focus()
+}
 
-        this.emitLoad()
-      }
-    }, 300),
+const blur = () => {
+  scrollBar.value?.containerEl.blur()
+}
 
-    /**
-     * Emits loading event
-     */
-    emitLoad() {
-      this.$emit(Event.loading, {
-        loaded: () => this.setLoaded(),
-        completed: () => this.setCompleted(),
-      })
-    },
+const initScrollbar = () => {
+  const view = containerRef.value
+  if (!view) {
+    return
+  }
 
-    /**
-     * Sets loaded state
-     */
-    setLoaded() {
-      this.resolve = true
-      this.loading = false
-      this.completed = false
-
-      this.$nextTick(() => {
-        let limitY = this.getLimit("y")
-        let offsetY = this.getOffset("y")
-
-        if (_.checkLoadCapability(limitY, offsetY, this.loadThreshold)) {
-          this.emitLoad()
-        }
-      })
-    },
-
-    /**
-     * Sets completed state
-     */
-    setCompleted() {
-      this.resolve = false
-      this.loading = false
-      this.completed = true
-    },
-
-    /**
-     * Resets state
-     */
-    resetInfLoad() {
-      this.resolve = true
-      this.loading = false
-      this.completed = false
-    },
-
-    // Misc
-    focus() {
-      this.scrollBar.containerEl.focus()
-    },
-    blur() {
-      this.scrollBar.containerEl.blur()
-    },
-  },
-  mounted() {
-    this.$nextTick(() => {
-      // Use plugins
-      if (this.hasPlugins) {
-        this.plugins.forEach((plugin) => {
-          SmoothScrollbar.use(plugin)
-        })
-      }
-
-      // Init
-      this.scrollBar = SmoothScrollbar.init(
-        this.$refs.view,
-        _.defaultsDeep(this.options, defaultOptions)
-      )
-
-      // Add infinite loading listener
-      this.addListener((status) => {
-        if (!this.infiniteLoading) return
-        if (this.loading || this.completed) return
-
-        let { limit, offset } = status
-
-        let canLoad = _.checkLoadCapability(
-          limit.y,
-          offset.y,
-          this.loadThreshold
-        )
-        this.resolve = canLoad
-
-        if (!this.completed) {
-          if (canLoad) {
-            this.debounceLoad(true)
-          }
-        } else {
-          this.loading = false
-        }
-      })
-
-      // Add scroll listener
-      this.addListener((status) => {
-        let { limit, offset } = status
-
-        let limitX = limit.x
-        let limitY = limit.y
-
-        let offsetX = offset.x
-        let offsetY = offset.y
-
-        if (limitY > 0) {
-          if (limitY === offsetY) {
-            this.$emit(Event.endY)
-          }
-        }
-
-        if (limitX > 0) {
-          if (limitX === offsetX) {
-            this.$emit(Event.endX)
-          }
-        }
-
-        this.meta.limit = limit
-        this.meta.offset = offset
-        this.$emit(Event.scroll, status)
-      })
-
-      // Emit initial
-      if (this.infiniteLoading) {
-        this.emitLoad()
-      }
+  if (props.plugins.length) {
+    props.plugins.forEach((plugin) => {
+      SmoothScrollbarLib.use(plugin)
     })
-  },
-  beforeUnmount() {
-    if (this.scrollBar !== null) {
-      this.removeAllListeners()
-      this.scrollBar.destroy()
+  }
+
+  scrollBar.value = SmoothScrollbarLib.init(
+    view,
+    defaultsDeep({ ...defaultOptions }, props.options),
+  )
+
+  addListener((status) => {
+    if (!props.infiniteLoading) return
+    if (loading.value || completed.value) return
+
+    const { limit, offset } = status
+    const canLoad = checkLoadCapability(limit.y, offset.y, props.loadThreshold)
+    resolve.value = canLoad
+
+    if (!completed.value) {
+      if (canLoad) {
+        debounceLoad()
+      }
+    } else {
+      loading.value = false
     }
-  },
-  updated() {
-    this.scrollBar && this.scrollBar.update()
-  },
-  render() {
-    let containerData = {
-      class: "c-scroll-view",
-      ref: "view",
-      attrs: {
-        "data-scrollbar": "",
-      },
-      on: {
-        mouseenter: this.focus,
-      },
-      style: {
-        display: "block",
-        width: "100%",
-        height: "100%",
-      },
+  })
+
+  addListener((status) => {
+    const { limit, offset } = status
+
+    if (limit.y > 0 && limit.y === offset.y) {
+      emit(Event.endY)
     }
 
-    return h("div", containerData, [
-      h(
-        "div",
-        {
-          class: "c-scroll-view__content",
-          style: {
-            position: "relative",
-            display: "block",
-            height: "auto",
-          },
-        },
-        this.$slots.default()
-      ),
-    ])
-  },
+    if (limit.x > 0 && limit.x === offset.x) {
+      emit(Event.endX)
+    }
+
+    emit(Event.scroll, status)
+  })
+
+  if (props.infiniteLoading) {
+    emitLoad()
+  }
 }
+
+onMounted(() => {
+  queueMicrotask(initScrollbar)
+})
+
+onUpdated(() => {
+  scrollBar.value?.update()
+})
+
+watch(
+  () => props.options,
+  () => {
+    update()
+  },
+  { deep: true },
+)
+
+onBeforeUnmount(() => {
+  if (scrollBar.value !== null) {
+    removeAllListeners()
+    scrollBar.value.destroy()
+    scrollBar.value = null
+  }
+})
+
+defineExpose({
+  getLimit,
+  getOffset,
+  scrollTo,
+  scrollIntoView,
+  isVisible,
+  addListener,
+  removeListener,
+  removeAllListeners,
+  update,
+  setLoaded,
+  setCompleted,
+  resetInfLoad,
+  focus,
+  blur,
+  scrollBar,
+})
 </script>
+
+<template>
+  <div
+    ref="containerRef"
+    class="c-scroll-view"
+    data-scrollbar
+    @mouseenter="focus"
+  >
+    <div class="c-scroll-view__content">
+      <slot />
+    </div>
+  </div>
+</template>
