@@ -17,6 +17,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +37,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Verify npm authentication
+        run: |
+          echo "Authenticated npm user:"
+          npm whoami
+          echo "Package maintainers:"
+          npm owner ls vue3-smooth-scrollbar
+
       - name: Create release pull request or publish to npm
         uses: changesets/action@v1
         with:
@@ -45,3 +54,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
