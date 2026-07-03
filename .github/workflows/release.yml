@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
 
 concurrency:
   group: release
@@ -12,7 +13,6 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
-  id-token: write
 
 jobs:
   release:
@@ -44,14 +44,48 @@ jobs:
           echo "Package maintainers:"
           npm owner ls vue3-smooth-scrollbar
 
-      - name: Create release pull request or publish to npm
+      - name: Check for pending changesets
+        id: pending
+        run: |
+          count=$(find .changeset -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Open version packages pull request
+        if: steps.pending.outputs.count != '0'
         uses: changesets/action@v1
         with:
           version: bun run version-packages
-          publish: bun run release
+          publish: exit 0
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        if: steps.pending.outputs.count == '0'
+        id: publish
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+
+          if npm view "vue3-smooth-scrollbar@${VERSION}" version >/dev/null 2>&1; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "vue3-smooth-scrollbar@${VERSION} is already on npm"
+            exit 0
+          fi
+
+          bun run build
+          npm publish --access public
+
+          echo "already_published=false" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: steps.publish.outputs.already_published == 'false'
+        run: |
+          VERSION="${{ steps.publish.outputs.version }}"
+          awk "/^## ${VERSION}$/,/^## / { if (!/^## / || \$0 == \"## ${VERSION}\") print }" CHANGELOG.md > "/tmp/release-notes.md"
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --notes-file "/tmp/release-notes.md"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
