@@ -116,6 +116,23 @@ Releases are managed with [Changesets](https://github.com/changesets/changesets)
 
 Required repository secrets:
 
-- `NPM_TOKEN` — npm access token with publish rights
+- `NPM_TOKEN` — npm **Automation** access token with publish rights for this package
 
 `GITHUB_TOKEN` is provided automatically for release PRs and GitHub releases.
+
+### npm 2FA and CI
+
+If the Release workflow fails with `EOTP` / "requires a one-time password", the npm account has 2FA enabled and the token is not allowed to publish from CI.
+
+Create a new token at [npm → Access Tokens](https://www.npmjs.com/settings/~tokens):
+
+1. **Classic token** → type **Automation** (bypasses 2FA for CI), or
+2. **Granular token** → allow **Read and write** for `vue3-smooth-scrollbar`
+
+Then update the GitHub secret:
+
+```bash
+gh secret set NPM_TOKEN --repo orafal-dev/vue3-smooth-scrollbar
+```
+
+Re-run the failed Release workflow after updating the secret.
